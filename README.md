@@ -21,8 +21,8 @@ climate:
 
 You can add custom sensors for the following info:
 * supply_temp (system temperature)
-* hotwater_active (weather hot water is available)
-* heatingstatus (idle, hotwater, heat)
+* hotwater_active (is hot water available or not)
+* heatingstatus (is it heating or not)
 * operating_mode (clock or manual)
 * system_pressure (system pressure)
 * outdoor_temp (outdoor temperature)
