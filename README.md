@@ -20,12 +20,12 @@ climate:
 ```
 
 You can add custom sensors for the following info:
-supply_temp (system temperature)
-hotwater_active (weather hot water is available)
-heatingstatus (idle, hotwater, heat)
-operating_mode (clock or manual)
-system_pressure (system pressure)
-outdoor_temp (outdoor temperature)
+* supply_temp (system temperature)
+* hotwater_active (weather hot water is available)
+* heatingstatus (idle, hotwater, heat)
+* operating_mode (clock or manual)
+* system_pressure (system pressure)
+* outdoor_temp (outdoor temperature)
 
 These sensors can be added in the following way in your `configuration.yaml`:
 
