@@ -17,6 +17,7 @@ climate:
   platform: nefit_easy
   host: localhost (optional)
   port: 3000 (optional)
+  scan_interval: 60 (optional) #refresh rate in seconds
 ```
 
 You can add custom sensors for the following info:

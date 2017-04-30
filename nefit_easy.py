@@ -65,24 +65,22 @@ class NefitEasyThermostat(ClimateDevice):
         self._supply_temp = None
         self._outdoor_temp = None
         self._system_pressure = None
+        self.override_target_temp = False
+        self.new_target_temp = 0
 
         # initial data
         self.update()
 
     def postUrl(self, location, data):
         url = 'http://{}:{}{}'.format(self._host, self._port, location)
-        try:
-            request = urllib.request.Request(
-                url,
-                data=json.dumps({"value" : data}).encode("utf-8"),
-                headers={'Content-type': 'application/json'})
+        request = urllib.request.Request(
+            url,
+            data=json.dumps({"value" : data}).encode("utf-8"),
+            headers={'Content-type': 'application/json'})
 
-            with urllib.request.urlopen(request) as response:
-                response_body = response.read().decode("utf-8")
-                _LOGGER.debug(response_body)
-        except HTTPError as ex:
-            _LOGGER.error(ex.read())
-            return
+        with urllib.request.urlopen(request) as response:
+            response_body = response.read().decode("utf-8")
+            _LOGGER.debug(response_body)
 
     @property
     def name(self):
@@ -102,34 +100,53 @@ class NefitEasyThermostat(ClimateDevice):
         update_url_outdoor = 'http://{}:{}{}'.format(self._host, self._port, '/bridge/system/sensors/temperatures/outdoor_t1')
         update_url_pressure = 'http://{}:{}{}'.format(self._host, self._port, '/bridge/system/appliance/systemPressure')
 
+        _LOGGER.debug("Updating values")
         try:
             with urllib.request.urlopen(update_url_status) as url:
                 data = json.loads(url.read().decode("utf-8"))
-            with urllib.request.urlopen(update_url_supply) as url:
-                data_supply = json.loads(url.read().decode("utf-8"))
-            with urllib.request.urlopen(update_url_outdoor) as url:
-                data_outdoor = json.loads(url.read().decode("utf-8"))
-            with urllib.request.urlopen(update_url_pressure) as url:
-                data_pressure = json.loads(url.read().decode("utf-8"))
-
-        except HTTPError as ex:
-            _LOGGER.error(ex.read())
-            return
-
-        try:
             self._current_temperature = float(data['value']['IHT'])
-            self._target_temperature = float(data['value']['TSP'])
             self._state = data['value']['BAI']
             self._usermode = data['value']['UMD']
             self._hotwater_active = (data['value']['DHW'] == 'on')
 
-            self._supply_temp = float(data_supply['value'])
+            #update happens too fast after setting new target, so value is not changed on server yet.
+            #assume for this first update that the set target was succesful
+            if self.override_target_temp:
+                self._target_temperature = self.new_target_temp
+                self.override_target_temp = False
+            else:
+                self._target_temperature = float(data['value']['TSP'])
 
-            self._outdoor_temp = float(data_outdoor['value'])
-            
-            self._system_pressure = float(data_pressure['value'])
-        except:
-            _LOGGER.error('Nefit api returned invalid data')
+        except HTTPError as ex:
+            _LOGGER.error('Nefit api returned invalid data 1')
+            _LOGGER.error(ex.read())
+
+        try:
+            with urllib.request.urlopen(update_url_supply) as url:
+                data = json.loads(url.read().decode("utf-8"))
+            self._supply_temp = float(data['value'])
+        except HTTPError as ex:
+            _LOGGER.error('Nefit api returned invalid data 2')
+            _LOGGER.error(ex.read())
+
+        try:
+            with urllib.request.urlopen(update_url_outdoor) as url:
+                data = json.loads(url.read().decode("utf-8"))
+            self._outdoor_temp = float(data['value'])
+        except HTTPError as ex:
+            _LOGGER.error('Nefit api returned invalid data 3')
+            _LOGGER.error(ex.read())
+
+        try:
+            with urllib.request.urlopen(update_url_pressure) as url:
+                data = json.loads(url.read().decode("utf-8"))
+            self._system_pressure = float(data['value'])
+        except HTTPError as ex:
+            _LOGGER.error('Nefit api returned invalid data 4')
+            _LOGGER.error(ex.read())
+
+
+        _LOGGER.debug("Received new values. Target {}.".format(self._target_temperature))
 
     @property
     def device_state_attributes(self):
@@ -185,9 +202,17 @@ class NefitEasyThermostat(ClimateDevice):
         if temperature is None:
             return
 
+        _LOGGER.debug("Setting new target: {}".format(temperature))
+
         #set temp
-        if self._usermode == 'manual':
-            self.postUrl('/bridge/heatingCircuits/hc1/temperatureRoomManual', temperature)
-        else:
-            self.postUrl('/bridge/heatingCircuits/hc1/manualTempOverride/temperature', temperature)
-            self.postUrl('/bridge/heatingCircuits/hc1/manualTempOverride/status', 'on')
+        try:
+            if self._usermode == 'manual':
+                self.postUrl('/bridge/heatingCircuits/hc1/temperatureRoomManual', temperature)
+            else:
+                self.postUrl('/bridge/heatingCircuits/hc1/manualTempOverride/temperature', temperature)
+                self.postUrl('/bridge/heatingCircuits/hc1/manualTempOverride/status', 'on')
+
+            self.override_target_temp = True
+            self.new_target_temp = temperature
+        except HTTPError as ex:
+            _LOGGER.error("Error when setting target: {}".format(ex.read()))
