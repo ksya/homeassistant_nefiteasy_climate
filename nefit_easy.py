@@ -17,6 +17,7 @@ from homeassistant.components.climate import (
 from homeassistant.const import (
     TEMP_CELSIUS, ATTR_TEMPERATURE, CONF_HOST, CONF_PORT)
 import homeassistant.helpers.config_validation as cv
+from homeassistant.util.temperature import convert as convert_temperature
 
 REQUIREMENTS = []
 
