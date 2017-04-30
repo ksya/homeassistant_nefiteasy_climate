@@ -23,8 +23,13 @@ REQUIREMENTS = []
 _LOGGER = logging.getLogger(__name__)
 
 STATE_HOTWATER = 'hotwater'
-ATTR_HEATINGMETHOD = 'heatingmethod'
+
+ATTR_HEATINGSTATUS = 'heatingstatus'
 ATTR_OP_MODE = 'operating_mode'
+ATTR_HOTWATER_ACTIVE = 'hotwater_active'
+ATTR_SUPPLYTEMP = 'supply_temp'
+ATTR_OUTDOOR_TEMP = 'outdoor_temp'
+ATTR_SYSTEM_PRESSURE = 'system_pressure'
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_HOST, default='localhost'): cv.string,
@@ -37,7 +42,10 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     host = config.get(CONF_HOST)
     port = config.get(CONF_PORT)
 
-    add_devices([NefitEasyThermostat(host, port)])
+    nefit = NefitEasyThermostat(host, port)
+
+    add_devices([nefit])
+
     return True
 
 
@@ -52,6 +60,10 @@ class NefitEasyThermostat(ClimateDevice):
         self._target_temperature = None
         self._state = None
         self._usermode = None
+        self._hotwater_active = None
+        self._supply_temp = None
+        self._outdoor_temp = None
+        self._system_pressure = None
 
         # initial data
         self.update()
@@ -84,27 +96,50 @@ class NefitEasyThermostat(ClimateDevice):
     def update(self):
         """Update the data from the thermostat."""
 
-        update_url = 'http://{}:{}{}'.format(self._host, self._port, '/api/status')
+        update_url_status = 'http://{}:{}{}'.format(self._host, self._port, '/bridge/ecus/rrc/uiStatus')
+        update_url_supply = 'http://{}:{}{}'.format(self._host, self._port, '/bridge/heatingCircuits/hc1/actualSupplyTemperature')
+        update_url_outdoor = 'http://{}:{}{}'.format(self._host, self._port, '/bridge/system/sensors/temperatures/outdoor_t1')
+        update_url_pressure = 'http://{}:{}{}'.format(self._host, self._port, '/bridge/system/appliance/systemPressure')
 
         try:
-            with urllib.request.urlopen(update_url) as url:
-                data = json.loads(url.read())
+            with urllib.request.urlopen(update_url_status) as url:
+                data = json.loads(url.read().decode("utf-8"))
+            with urllib.request.urlopen(update_url_supply) as url:
+                data_supply = json.loads(url.read().decode("utf-8"))
+            with urllib.request.urlopen(update_url_outdoor) as url:
+                data_outdoor = json.loads(url.read().decode("utf-8"))
+            with urllib.request.urlopen(update_url_pressure) as url:
+                data_pressure = json.loads(url.read().decode("utf-8"))
 
         except HTTPError as ex:
             _LOGGER.error(ex.read())
             return
 
-        self._current_temperature = data['in house temp']
-        self._target_temperature = data['temp setpoint']
-        self._state = data['boiler indicator']  #'boiler indicator' : { 'CH' : 'central heating', 'HW' : 'hot water', 'No' : 'off' }
-        self._usermode = data['user mode']
+        try:
+            self._current_temperature = float(data['value']['IHT'])
+            self._target_temperature = float(data['value']['TSP'])
+            self._state = data['value']['BAI']
+            self._usermode = data['value']['UMD']
+            self._hotwater_active = (data['value']['DHW'] == 'on')
+
+            self._supply_temp = float(data_supply['value'])
+
+            self._outdoor_temp = float(data_outdoor['value'])
+            
+            self._system_pressure = float(data_pressure['value'])
+        except:
+            _LOGGER.error('Nefit api returned invalid data')
 
     @property
     def device_state_attributes(self):
         """Return the device specific state attributes."""
         return {
-            ATTR_HEATINGMETHOD: self._state,
-            ATTR_OP_MODE: self._usermode
+            ATTR_HEATINGSTATUS: self._state,
+            ATTR_OP_MODE: self._usermode,
+            ATTR_HOTWATER_ACTIVE: self._hotwater_active,
+            ATTR_SUPPLYTEMP: self._supply_temp,
+            ATTR_OUTDOOR_TEMP: self._outdoor_temp,
+            ATTR_SYSTEM_PRESSURE: self._system_pressure
         }
 
     @property
@@ -126,12 +161,22 @@ class NefitEasyThermostat(ClimateDevice):
     def current_operation(self):
         """Return the current state of the thermostat."""
         state = self._state
-        if state == 'central heating':
+        if state == 'CH':
             return STATE_HEAT
-        elif state == 'hot water':
+        elif state == 'HW':
             return STATE_HOTWATER
-        elif state == 'off':
+        elif state == 'No':
             return STATE_IDLE
+
+    @property
+    def min_temp(self):
+        """Set min temp to limit unrealistic temperatures."""
+        return convert_temperature(15, TEMP_CELSIUS, self.temperature_unit)
+
+    @property
+    def max_temp(self):
+        """Set max temp to limit unrealistic temperatures."""
+        return convert_temperature(26, TEMP_CELSIUS, self.temperature_unit)
 
     def set_temperature(self, **kwargs):
         """Set new target temperature."""
@@ -145,4 +190,3 @@ class NefitEasyThermostat(ClimateDevice):
         else:
             self.postUrl('/bridge/heatingCircuits/hc1/manualTempOverride/temperature', temperature)
             self.postUrl('/bridge/heatingCircuits/hc1/manualTempOverride/status', 'on')
-
