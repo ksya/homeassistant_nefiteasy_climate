@@ -1,3 +1,6 @@
+# Deprecated. Please use https://github.com/marconfus/ha-nefit which I also maintain.
+
+----
 # Nefit Easy™ Home Assistant component
 
 Let [Home Assistant](http://home-assistant.io) communicate with your Nefit/Bosch smart thermostat.
