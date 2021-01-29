@@ -1,4 +1,4 @@
-# Deprecated. Please use https://github.com/marconfus/ha-nefit which I also maintain.
+# Deprecated. Please use https://github.com/ksya/ha-nefiteasy.
 
 ----
 # Nefit Easy™ Home Assistant component
